@@ -41,6 +41,7 @@ import java.util.Iterator;
 import java.util.List;
 
 public class EntryRendererManager<T extends EntryWidget> implements Iterable<T> {
+    private static final int ENTRIES_PER_STRATUM = 64;
     private final Int2ObjectMap<List<Object>> grouping = new Int2ObjectOpenHashMap<>();
     private final List<T> toRender = new ArrayList<>();
     
@@ -70,10 +71,16 @@ public class EntryRendererManager<T extends EntryWidget> implements Iterable<T> 
     }
     
     public static <T extends EntryWidget> void renderEntries(boolean debugTime, MutableInt size, MutableLong time, GuiGraphics graphics, int mouseX, int mouseY, float delta, Iterable<T> entries) {
+        int rendered = 0;
         for (T entry : entries) {
             if (entry.getCurrentEntry().isEmpty())
                 continue;
             try {
+                // Vanilla searches earlier elements in the current stratum for overlapping bounds.
+                // Bound that search for large grids without caching dynamic item models or decorations.
+                if (rendered++ % ENTRIES_PER_STRATUM == 0) {
+                    graphics.nextStratum();
+                }
                 if (debugTime) {
                     size.increment();
                     long l = System.nanoTime();

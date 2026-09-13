@@ -52,6 +52,26 @@ public class ExclusionZonesImpl implements ExclusionZones {
     
     private long lastArea = -1;
     private final Multimap<Class<?>, Function<Screen, Collection<Rectangle>>> list = HashMultimap.create();
+    private Screen snapshotScreen;
+    private List<Rectangle> snapshotZones;
+
+    /**
+     * Samples dynamic providers once for the overlay's slot hit tests. The snapshot is scoped to
+     * this render call so input events and subsequent frames always see current screen geometry.
+     */
+    public void withSnapshot(Screen screen, Runnable render) {
+        List<Rectangle> zones = getExclusionZones(screen, false);
+        Screen previousScreen = snapshotScreen;
+        List<Rectangle> previousZones = snapshotZones;
+        snapshotScreen = screen;
+        snapshotZones = zones;
+        try {
+            render.run();
+        } finally {
+            snapshotScreen = previousScreen;
+            snapshotZones = previousZones;
+        }
+    }
     
     @Override
     public <R extends Screen> boolean isHandingScreen(Class<R> screen) {
@@ -66,6 +86,15 @@ public class ExclusionZonesImpl implements ExclusionZones {
     @Override
     public InteractionResult isInZone(double mouseX, double mouseY) {
         Screen screen = Minecraft.getInstance().gui.screen();
+        if (screen == null) return InteractionResult.PASS;
+        if (snapshotZones != null && snapshotScreen == screen) {
+            for (Rectangle zone : snapshotZones) {
+                if (zone.contains(mouseX, mouseY)) {
+                    return InteractionResult.FAIL;
+                }
+            }
+            return InteractionResult.PASS;
+        }
         Class<? extends Screen> screenClass = screen.getClass();
         
         synchronized (list) {

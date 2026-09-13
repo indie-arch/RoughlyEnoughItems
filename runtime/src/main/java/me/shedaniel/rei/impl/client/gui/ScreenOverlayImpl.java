@@ -60,6 +60,7 @@ import me.shedaniel.rei.impl.client.gui.widget.entrylist.ScrolledEntryListWidget
 import me.shedaniel.rei.impl.client.gui.widget.favorites.FavoritesListWidget;
 import me.shedaniel.rei.impl.client.gui.widget.hint.HintsContainerWidget;
 import me.shedaniel.rei.impl.client.gui.widget.search.OverlaySearchField;
+import me.shedaniel.rei.impl.client.registry.screen.ExclusionZonesImpl;
 import me.shedaniel.rei.impl.common.util.RectangleUtils;
 import net.minecraft.client.Minecraft;
 import me.shedaniel.rei.api.client.gui.compat.GuiGraphics;
@@ -226,6 +227,11 @@ public abstract class ScreenOverlayImpl extends ScreenOverlay {
     
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+        ExclusionZonesImpl exclusionZones = (ExclusionZonesImpl) ScreenRegistry.getInstance().exclusionZones();
+        exclusionZones.withSnapshot(minecraft.gui.screen(), () -> renderOverlay(graphics, mouseX, mouseY, delta));
+    }
+
+    private void renderOverlay(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
         if (shouldReload || !calculateOverlayBounds().equals(bounds)) {
             init();
             getEntryListWidget().updateSearch(REIRuntimeImpl.getSearchField().getText(), true);

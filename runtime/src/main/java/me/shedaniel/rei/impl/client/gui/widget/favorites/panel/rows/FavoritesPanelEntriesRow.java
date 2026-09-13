@@ -85,12 +85,13 @@ public class FavoritesPanelEntriesRow extends FavoritesPanelRow {
     @Override
     public void render(GuiGraphics graphics, Rectangle innerBounds, int x, int y, int rowWidth, int rowHeight, int mouseX, int mouseY, float delta) {
         this.lastY = y;
-        int entrySize = entrySize();
+        double visibleTop = innerBounds.y + panel.getScrolledAmount();
+        double visibleBottom = innerBounds.getMaxY() + panel.getScrolledAmount();
         updateEntriesPosition(entry -> !ConfigObject.getInstance().isReducedMotion());
         for (SectionFavoriteWidget widget : widgets) {
             widget.update(delta);
             
-            if (widget.getBounds().getMaxY() > lastY && widget.getBounds().getY() <= lastY + rowHeight) {
+            if (widget.getBounds().getMaxY() > visibleTop && widget.getBounds().getY() < visibleBottom) {
                 if (widget.getCurrentEntry().isEmpty())
                     continue;
                 widget.render(graphics, mouseX, mouseY, delta);

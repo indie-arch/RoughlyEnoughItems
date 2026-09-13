@@ -132,12 +132,8 @@ public class EntryListStackEntry extends DisplayedEntryWidget {
             float fullSize = bounds.getWidth();
             
             
-            for (int i = stacks.size() - 1; i >= 0; i--) {
+            for (int i = Math.min(stacks.size(), collapsedBounds.size()) - 1; i >= 0; i--) {
                 EntryStack<?> stack = stacks.get(i);
-                
-                if (i >= collapsedBounds.size()) {
-                    continue;
-                }
                 
                 FloatingRectangle value = collapsedBounds.get(i);
                 double x = bounds.x + value.x * fullSize;

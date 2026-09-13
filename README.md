@@ -1,27 +1,55 @@
 # Roughly Enough Items
-https://minecraft.curseforge.com/projects/roughly-enough-items <br>
-Roughly Enough Items is a mod to view Items and Recipes for Minecraft 1.13 - 1.18, supporting mod loaders from Forge, Rift to Fabric.
------
 
-[Help translate REI on Crowdin!](https://crowdin.com/project/roughly-enough-items)
+[![CurseForge](https://img.shields.io/curseforge/dt/310111?logo=curseforge&label=CurseForge)](https://www.curseforge.com/minecraft/mc-mods/roughly-enough-items)
+[![Modrinth](https://img.shields.io/modrinth/dt/nfn13YXA?logo=modrinth&label=Modrinth)](https://modrinth.com/mod/rei)
+[![Crowdin](https://badges.crowdin.net/roughly-enough-items/localized.svg)](https://crowdin.com/project/roughly-enough-items)
 
-![](https://i.imgur.com/eQsWDrM.png)
+Roughly Enough Items (REI) is a Minecraft mod for browsing items and recipes.
+The current branch targets Minecraft 26.2 on Fabric and NeoForge.
 
-![](https://i.imgur.com/OcOQLip.png)
+Download REI from [CurseForge](https://www.curseforge.com/minecraft/mc-mods/roughly-enough-items)
+or [Modrinth](https://modrinth.com/mod/rei). The required dependencies are listed on
+each download page.
 
-This mod is both client sided and server sided.
+![The REI item browser](https://i.imgur.com/eQsWDrM.png)
 
-# Maven
-Firstly, add my Maven repository (If you already have the architectury maven, you don't need to do this, they are the same repo)
+![An REI recipe display](https://i.imgur.com/OcOQLip.png)
+
+## Installation
+
+Install the REI build matching both your Minecraft version and mod loader. REI has
+client and server components; install it on both sides for the complete feature set.
+
+## Development
+
+### Requirements
+
+- JDK 25 or newer
+- The repository's Gradle wrapper; a system Gradle installation is not required
+
+Build every active platform:
+
+```shell
+./gradlew build
+```
+
+Platform jars are written to `fabric/build/libs` and `neoforge/build/libs`.
+
+## Using the API
+
+Published versions are available from the Shedaniel Maven repository:
+
 ```gradle
 repositories {
-    maven { url "https://maven.shedaniel.me" }
+    maven { url = "https://maven.shedaniel.me" }
 }
 ```
 
-## Choosing the correct artifact to depend on
+Replace `VERSION` below with an REI version compatible with your target Minecraft
+version. Compile against the API and use the full platform artifact at runtime.
+
 ### Fabric
-REI recommends you to declare a compile dependency on REI's API, and a runtime dependency on REI's full package.
+
 ```gradle
 dependencies {
     modCompileOnly "me.shedaniel:RoughlyEnoughItems-api-fabric:VERSION"
@@ -29,73 +57,71 @@ dependencies {
 }
 ```
 
-Additionally, if you want to interact with the builtin plugins, you may declare a compile dependency on it as well.
+To compile against REI's built-in display and category implementations, add:
+
 ```gradle
 dependencies {
     modCompileOnly "me.shedaniel:RoughlyEnoughItems-default-plugin-fabric:VERSION"
 }
 ```
 
-### Forge (ForgeGradle)
-REI recommends you to just depend on REI's full package.
+### NeoForge
+
 ```gradle
 dependencies {
-    implementation fg.deobf("me.shedaniel:RoughlyEnoughItems-forge:VERSION")
+    modCompileOnly "me.shedaniel:RoughlyEnoughItems-api-neoforge:VERSION"
+    modRuntimeOnly "me.shedaniel:RoughlyEnoughItems-neoforge:VERSION"
 }
 ```
 
-### Forge (Architectury Loom)
-REI recommends you to declare a compile dependency on REI's API, and a runtime dependency on REI's full package.
+To compile against REI's built-in display and category implementations, add:
+
 ```gradle
 dependencies {
-    modCompileOnly "me.shedaniel:RoughlyEnoughItems-api-forge:VERSION"
-    modRuntimeOnly "me.shedaniel:RoughlyEnoughItems-forge:VERSION"
+    modCompileOnly "me.shedaniel:RoughlyEnoughItems-default-plugin-neoforge:VERSION"
 }
 ```
 
-Additionally, if you want to interact with the builtin plugins, you may declare a compile dependency on it as well.
-```gradle
-dependencies {
-    modCompileOnly "me.shedaniel:RoughlyEnoughItems-default-plugin-forge:VERSION"
-}
-```
+### Common Architectury code
 
-### Architectury
-REI recommends you to declare a compile dependency on REI's common API, and declare the full package on the individual platform's subprojects.
 ```gradle
-// Common
 dependencies {
     modCompileOnly "me.shedaniel:RoughlyEnoughItems-api:VERSION"
 }
-
-// Fabric
-dependencies {
-    modRuntimeOnly "me.shedaniel:RoughlyEnoughItems-fabric:VERSION"
-}
-
-// Forge
-dependencies {
-    modRuntimeOnly "me.shedaniel:RoughlyEnoughItems-forge:VERSION"
-}
 ```
 
-Additionally, if you want to interact with the builtin plugins, you may declare a compile dependency on it as well.
+If common code interacts with the built-in plugin, add:
+
 ```gradle
-// Common
 dependencies {
     modCompileOnly "me.shedaniel:RoughlyEnoughItems-default-plugin:VERSION"
 }
 ```
 
-### List of artifacts
-- **me.shedaniel:RoughlyEnoughItems-api**: REI API for Architectury Common
-- **me.shedaniel:RoughlyEnoughItems-default-plugin**: REI Default Plugin for Architectury Common
-- **me.shedaniel:RoughlyEnoughItems-runtime**: REI Runtime for Architectury Common
-- **me.shedaniel:RoughlyEnoughItems-api-fabric**: REI API for Fabric
-- **me.shedaniel:RoughlyEnoughItems-default-plugin-fabric**: REI Default Plugin for Fabric
-- **me.shedaniel:RoughlyEnoughItems-runtime-fabric**: REI Runtime for Fabric
-- **me.shedaniel:RoughlyEnoughItems-api-forge**: REI API for Forge
-- **me.shedaniel:RoughlyEnoughItems-default-plugin-forge**: REI Default Plugin for Forge
-- **me.shedaniel:RoughlyEnoughItems-runtime-forge**: REI Runtime for Forge
-- **me.shedaniel:RoughlyEnoughItems-fabric**: Full REI for Fabric
-- **me.shedaniel:RoughlyEnoughItems-forge**: Full REI for Forge
+The platform subprojects still need the corresponding full REI artifact as a runtime
+dependency.
+
+### Published artifacts
+
+| Artifact | Contents |
+| --- | --- |
+| `RoughlyEnoughItems-api` | Common API |
+| `RoughlyEnoughItems-default-plugin` | Common built-in plugin API |
+| `RoughlyEnoughItems-runtime` | Common runtime |
+| `RoughlyEnoughItems-api-fabric` | Fabric API |
+| `RoughlyEnoughItems-default-plugin-fabric` | Fabric built-in plugin API |
+| `RoughlyEnoughItems-runtime-fabric` | Fabric runtime |
+| `RoughlyEnoughItems-fabric` | Complete Fabric mod |
+| `RoughlyEnoughItems-api-neoforge` | NeoForge API |
+| `RoughlyEnoughItems-default-plugin-neoforge` | NeoForge built-in plugin API |
+| `RoughlyEnoughItems-neoforge` | Complete NeoForge mod |
+
+All coordinates use the `me.shedaniel` group.
+
+## Translations
+
+Help translate REI on [Crowdin](https://crowdin.com/project/roughly-enough-items).
+
+## License
+
+Roughly Enough Items is licensed under the [MIT License](LICENSE).

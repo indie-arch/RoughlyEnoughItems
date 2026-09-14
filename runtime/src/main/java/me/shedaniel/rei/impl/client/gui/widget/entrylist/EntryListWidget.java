@@ -259,12 +259,13 @@ public abstract class EntryListWidget extends WidgetWithBounds implements Overla
     public void updateEntriesPosition() {
         int entrySize = entrySize();
         boolean zoomed = ConfigObject.getInstance().isFocusModeZoomed();
+        boolean animate = !ConfigObject.getInstance().isReducedMotion();
         this.innerBounds = updateInnerBounds(bounds);
         updateEntries(entrySize, zoomed);
         FavoritesListWidget favoritesListWidget = ScreenOverlayImpl.getFavoritesListWidget();
         if (favoritesListWidget != null) {
-            favoritesListWidget.getSystemRegion().updateEntriesPosition(entry -> true);
-            favoritesListWidget.getRegion().updateEntriesPosition(entry -> true);
+            favoritesListWidget.getSystemRegion().updateEntriesPosition(entry -> animate);
+            favoritesListWidget.getRegion().updateEntriesPosition(entry -> animate);
         }
     }
     

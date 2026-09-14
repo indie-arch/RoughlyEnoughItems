@@ -49,6 +49,8 @@ public class AsyncSearchManager {
     private final Supplier<Predicate<HashedEntryStackWrapper>> additionalPredicateSupplier;
     private final UnaryOperator<HashedEntryStackWrapper> transformer;
     private volatile Map.Entry<List<HashedEntryStackWrapper>, SearchFilter> last;
+    private final Object lifecycleLock = new Object();
+    private volatile long generation;
     public volatile ExecutorTuple executor;
     public volatile SearchFilter filter;
     
@@ -59,7 +61,14 @@ public class AsyncSearchManager {
     }
     
     public void markDirty() {
-        this.last = null;
+        synchronized (this.lifecycleLock) {
+            this.last = null;
+            this.generation++;
+            if (this.executor != null) {
+                this.executor.future().cancel(Platform.isFabric());
+                this.executor = null;
+            }
+        }
     }
     
     public record ExecutorTuple(SearchFilter filter,
@@ -71,15 +80,20 @@ public class AsyncSearchManager {
         public long startTime = 0;
         public AtomicInteger partitionsDone = new AtomicInteger(0);
         public int totalPartitions = 0;
+        private volatile long generation;
     }
     
     public void updateFilter(String filter) {
-        if (this.filter == null || !this.filter.getFilter().equals(filter)) {
-            if (this.executor != null) {
-                this.executor.future().cancel(Platform.isFabric());
+        synchronized (this.lifecycleLock) {
+            if (this.filter == null || !this.filter.getFilter().equals(filter)) {
+                this.generation++;
+                this.last = null;
+                if (this.executor != null) {
+                    this.executor.future().cancel(Platform.isFabric());
+                }
+                this.executor = null;
+                this.filter = SearchProvider.getInstance().createFilter(filter);
             }
-            this.executor = null;
-            this.filter = SearchProvider.getInstance().createFilter(filter);
         }
     }
     
@@ -87,28 +101,46 @@ public class AsyncSearchManager {
         return this.last == null || this.last.getValue() != this.filter;
     }
     
+    public long getGeneration() {
+        return generation;
+    }
+    
     public Future<?> getAsync(BiConsumer<List<HashedEntryStackWrapper>, SearchFilter> consumer) {
         if (this.executor == null || this.executor.filter() != filter || isDirty()) {
             if (this.executor != null) {
                 this.executor.future().cancel(Platform.isFabric());
             }
+            SearchFilter savedFilter = this.filter;
+            long searchGeneration = this.generation;
             Steps steps = new Steps();
-            this.executor = new ExecutorTuple(filter, get(EXECUTOR_SERVICE, steps), steps);
+            steps.generation = searchGeneration;
+            this.executor = new ExecutorTuple(savedFilter, get(EXECUTOR_SERVICE, steps), steps);
         }
-        SearchFilter savedFilter = filter;
-        return (this.executor = new ExecutorTuple(this.executor.filter(), this.executor.future().thenApplyAsync(result -> {
-            if (savedFilter == filter) {
-                consumer.accept(result.getKey(), result.getValue());
+        ExecutorTuple executor = this.executor;
+        SearchFilter savedFilter = executor.filter();
+        long searchGeneration = executor.steps().generation;
+        CompletableFuture<Map.Entry<List<HashedEntryStackWrapper>, SearchFilter>> future = executor.future().thenApplyAsync(result -> {
+            if (!isCurrent(savedFilter, searchGeneration) || result.getValue() != savedFilter) {
+                throw new CancellationException();
             }
-            
+            consumer.accept(result.getKey(), result.getValue());
             return result;
-        }, EXECUTOR_SERVICE), executor.steps)).future();
+        }, EXECUTOR_SERVICE);
+        synchronized (this.lifecycleLock) {
+            if (this.executor == executor) {
+                this.executor = new ExecutorTuple(executor.filter(), future, executor.steps());
+            }
+        }
+        return future;
     }
     
     public List<HashedEntryStackWrapper> getNow() {
         try {
             return get(Runnable::run, new Steps()).get().getKey();
         } catch (ExecutionException e) {
+            if (e.getCause() instanceof CancellationException) {
+                return Lists.newArrayList();
+            }
             throw new RuntimeException(e);
         } catch (InterruptedException | CancellationException e) {
             return Lists.newArrayList();
@@ -116,18 +148,44 @@ public class AsyncSearchManager {
     }
     
     public CompletableFuture<Map.Entry<List<HashedEntryStackWrapper>, SearchFilter>> get(Executor executor, Steps steps) {
-        if (isDirty()) {
-            Map.Entry<List<HashedEntryStackWrapper>, SearchFilter> last;
+        SearchFilter searchFilter;
+        long searchGeneration;
+        Map.Entry<List<HashedEntryStackWrapper>, SearchFilter> last;
+        synchronized (this.lifecycleLock) {
+            searchFilter = this.filter;
+            searchGeneration = this.generation;
             last = this.last;
-            return get(this.filter, this.additionalPredicateSupplier.get(), this.transformer,
-                    this.stacksProvider.apply(filter), last, this, executor, steps)
+        }
+        steps.generation = searchGeneration;
+        if (!isCurrent(searchFilter, searchGeneration)) {
+            return cancelledFuture();
+        }
+        if (last == null || last.getValue() != searchFilter) {
+            Predicate<HashedEntryStackWrapper> additionalPredicate = this.additionalPredicateSupplier.get();
+            if (!isCurrent(searchFilter, searchGeneration)) {
+                return cancelledFuture();
+            }
+            List<? extends HashedEntryStackWrapper> stacks = this.stacksProvider.apply(searchFilter);
+            if (!isCurrent(searchFilter, searchGeneration)) {
+                return cancelledFuture();
+            }
+            return get(searchFilter, additionalPredicate, this.transformer,
+                    stacks, last, this, executor, steps, searchGeneration)
                     .thenApply(entry -> {
-                        this.last = entry;
+                        synchronized (this.lifecycleLock) {
+                            if (!isCurrent(searchFilter, searchGeneration)) {
+                                throw new CancellationException();
+                            }
+                            this.last = entry;
+                        }
                         return entry;
                     })
                     .exceptionally(throwable -> {
+                        if (!isCurrent(searchFilter, searchGeneration)) {
+                            throw new CancellationException();
+                        }
                         InternalLogger.getInstance().error("Error while searching", throwable);
-                        return new AbstractMap.SimpleImmutableEntry<>(List.of(), filter);
+                        return new AbstractMap.SimpleImmutableEntry<>(List.of(), searchFilter);
                     });
         }
         
@@ -137,6 +195,15 @@ public class AsyncSearchManager {
     public static CompletableFuture<Map.Entry<List<HashedEntryStackWrapper>, SearchFilter>> get(SearchFilter filter, Predicate<HashedEntryStackWrapper> additionalPredicate,
             UnaryOperator<HashedEntryStackWrapper> transformer, List<? extends HashedEntryStackWrapper> stacks, Map.Entry<List<HashedEntryStackWrapper>, SearchFilter> last,
             AsyncSearchManager manager, Executor executor, Steps steps) {
+        return get(filter, additionalPredicate, transformer, stacks, last, manager, executor, steps, manager.generation);
+    }
+
+    private static CompletableFuture<Map.Entry<List<HashedEntryStackWrapper>, SearchFilter>> get(SearchFilter filter, Predicate<HashedEntryStackWrapper> additionalPredicate,
+            UnaryOperator<HashedEntryStackWrapper> transformer, List<? extends HashedEntryStackWrapper> stacks, Map.Entry<List<HashedEntryStackWrapper>, SearchFilter> last,
+            AsyncSearchManager manager, Executor executor, Steps steps, long generation) {
+        if (!manager.isCurrent(filter, generation)) {
+            return cancelledFuture();
+        }
         int searchPartitionSize = ConfigObject.getInstance().getAsyncSearchPartitionSize();
         boolean shouldAsync = ConfigObject.getInstance().shouldAsyncSearch() && stacks.size() > searchPartitionSize * 4;
         InternalLogger.getInstance().debug("Starting Search: \"" + filter.getFilter() + "\" with " + stacks.size() + " stacks, shouldAsync: " + shouldAsync + " on " + Thread.currentThread().getName());
@@ -146,15 +213,14 @@ public class AsyncSearchManager {
                 List<CompletableFuture<List<HashedEntryStackWrapper>>> futures = Lists.newArrayList();
                 int partitions = 0;
                 for (Iterable<? extends HashedEntryStackWrapper> partitionStacks : CollectionUtils.partition(stacks, searchPartitionSize * 4)) {
-                    final int finalPartitions = partitions;
                     futures.add(CompletableFuture.supplyAsync(() -> {
                         List<HashedEntryStackWrapper> filtered = Lists.newArrayList();
-                        if (manager.filter != filter) throw new CancellationException();
+                        if (!manager.isCurrent(filter, generation)) throw new CancellationException();
                         for (HashedEntryStackWrapper stack : partitionStacks) {
                             if (stack != null && test(filter, stack.unwrap(), stack.hashExact()) && additionalPredicate.test(stack)) {
                                 filtered.add(transformer.apply(stack));
                             }
-                            if (manager.filter != filter) throw new CancellationException();
+                            if (!manager.isCurrent(filter, generation)) throw new CancellationException();
                         }
                         steps.partitionsDone.incrementAndGet();
                         return filtered;
@@ -173,13 +239,11 @@ public class AsyncSearchManager {
                                 List<HashedEntryStackWrapper> now = future.getNow(null);
                                 if (now != null) list.addAll(now);
                             }
-                            if (manager.filter != filter) throw new CancellationException();
+                            if (!manager.isCurrent(filter, generation)) throw new CancellationException();
                             
                             return list;
                         }, executor)
-                        .thenApply(result -> {
-                            return new AbstractMap.SimpleImmutableEntry<>(result, filter);
-                        });
+                        .thenApply(result -> new AbstractMap.SimpleImmutableEntry<>(result, filter));
             } else {
                 List<HashedEntryStackWrapper> list = new ArrayList<>();
                 
@@ -187,7 +251,7 @@ public class AsyncSearchManager {
                     if (test(filter, stack.unwrap(), stack.hashExact()) && additionalPredicate.test(stack)) {
                         list.add(transformer.apply(stack));
                     }
-                    if (manager.filter != filter) throw new CancellationException();
+                    if (!manager.isCurrent(filter, generation)) throw new CancellationException();
                 }
                 
                 return CompletableFuture.completedFuture(new AbstractMap.SimpleImmutableEntry<>(list, filter));
@@ -197,6 +261,16 @@ public class AsyncSearchManager {
         return CompletableFuture.completedFuture(new AbstractMap.SimpleImmutableEntry<>(Lists.newArrayList(), filter));
     }
     
+    public boolean isCurrent(SearchFilter expectedFilter, long expectedGeneration) {
+        return this.filter == expectedFilter && this.generation == expectedGeneration;
+    }
+
+    private static <T> CompletableFuture<T> cancelledFuture() {
+        CompletableFuture<T> future = new CompletableFuture<>();
+        future.cancel(false);
+        return future;
+    }
+
     private static boolean test(SearchFilter filter, EntryStack<?> stack, long hashExact) {
         try {
             return filter.test(stack, hashExact);

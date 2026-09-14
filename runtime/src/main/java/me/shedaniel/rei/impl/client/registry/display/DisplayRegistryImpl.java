@@ -159,6 +159,7 @@ public class DisplayRegistryImpl extends AbstractDisplayRegistry<REIClientPlugin
     @Override
     public void startReload() {
         super.startReload();
+        this.holder().cache = new DisplayCacheImpl(true);
         this.displayGenerators.clear();
         this.visibilityPredicates.clear();
     }
@@ -341,7 +342,9 @@ public class DisplayRegistryImpl extends AbstractDisplayRegistry<REIClientPlugin
     }
     
     public static class ClientDisplaysHolder extends DisplaysHolderImpl.ByKey {
-        private final DisplayCache cache = new DisplayCacheImpl(false);
+        // The bootstrap holder is constructed before client configuration is available.
+        // startReload replaces this cache once client internals have been attached.
+        private DisplayCache cache = new DisplayCacheImpl(false);
         
         @Override
         public void add(Display display, @Nullable Object origin) {

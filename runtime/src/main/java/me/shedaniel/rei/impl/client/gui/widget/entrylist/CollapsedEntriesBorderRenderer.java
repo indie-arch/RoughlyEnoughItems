@@ -41,9 +41,13 @@ public class CollapsedEntriesBorderRenderer {
     private static final int LEFT_O = 0b110;
     private static final int RIGHT_O = 0b111;
     
+    private final LongSet edgeSet = new LongOpenHashSet();
+    private final LongList toRemove = new LongArrayList();
+    
     public void render(GuiGraphics graphics, Iterable<EntryListStackEntry> entries, Object2IntMap<CollapsedStack> collapsedStackIndicesGlobal) {
         if (collapsedStackIndicesGlobal.isEmpty()) return;
-        LongSet edgeSet = new LongOpenHashSet();
+        edgeSet.clear();
+        toRemove.clear();
         int entrySize = entrySize();
         // bit 0-1: direction
         // bit 2 occupied: has edge
@@ -87,7 +91,6 @@ public class CollapsedEntriesBorderRenderer {
         }
         
         LongIterator iterator = edgeSet.iterator();
-        LongList toRemove = new LongArrayList();
         while (iterator.hasNext()) {
             long l = iterator.nextLong();
             if ((l & 0b100) != 0) {

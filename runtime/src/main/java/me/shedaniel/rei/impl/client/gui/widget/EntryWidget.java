@@ -102,6 +102,8 @@ public class EntryWidget extends Slot implements DraggableStackProviderWidget {
     protected boolean wasClicked = false;
     private final Rectangle bounds;
     private final OriginalRetainingCyclingList<EntryStack<?>> stacks = new OriginalRetainingCyclingList<>(EntryStack::empty);
+    @Nullable
+    private EntryStack<?> currentEntryForRender;
     private long lastCycleTime = -1;
     @Nullable
     private Set<UnaryOperator<Tooltip>> tooltipProcessors;
@@ -294,9 +296,10 @@ public class EntryWidget extends Slot implements DraggableStackProviderWidget {
     
     @Override
     public EntryStack<?> getCurrentEntry() {
-        if (this.lastCycleTime == -1) this.lastCycleTime = System.currentTimeMillis();
-        if (System.currentTimeMillis() > this.lastCycleTime + getCyclingInterval()) {
-            this.lastCycleTime = System.currentTimeMillis();
+        long currentTime = System.currentTimeMillis();
+        if (this.lastCycleTime == -1) this.lastCycleTime = currentTime;
+        if (currentTime > this.lastCycleTime + getCyclingInterval()) {
+            this.lastCycleTime = currentTime;
             this.getCyclingEntries().next();
         }
         return this.getCyclingEntries().peek();
@@ -403,6 +406,15 @@ public class EntryWidget extends Slot implements DraggableStackProviderWidget {
         drawExtra(graphics, mouseX, mouseY, delta);
     }
     
+    void render(GuiGraphics graphics, int mouseX, int mouseY, float delta, EntryStack<?> currentEntry) {
+        currentEntryForRender = currentEntry;
+        try {
+            render(graphics, mouseX, mouseY, delta);
+        } finally {
+            currentEntryForRender = null;
+        }
+    }
+    
     public final boolean hasTooltips() {
         return isTooltipsEnabled();
     }
@@ -431,7 +443,10 @@ public class EntryWidget extends Slot implements DraggableStackProviderWidget {
     }
     
     protected void drawCurrentEntry(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
-        EntryStack<?> entry = getCurrentEntry();
+        EntryStack<?> entry = currentEntryForRender;
+        if (entry == null) {
+            entry = getCurrentEntry();
+        }
         entry.render(graphics, getInnerBounds(), mouseX, mouseY, delta);
     }
     
@@ -448,17 +463,20 @@ public class EntryWidget extends Slot implements DraggableStackProviderWidget {
     @Override
     @Nullable
     public Tooltip getCurrentTooltip(TooltipContext context) {
-        Tooltip tooltip = getCurrentEntry().getTooltip(context);
+        EntryStack<?> currentEntry = currentEntryForRender;
+        if (currentEntry == null) currentEntry = getCurrentEntry();
+        Tooltip tooltip = currentEntry.getTooltip(context);
         
         if (tooltip != null && !(Minecraft.getInstance().gui.screen() instanceof DisplayScreen)) {
             boolean exists = getTransferHandler(false) != null;
             
             if (!exists) {
-                if (lastCheckedTime == -1 || Util.getMillis() - lastCheckedTime > 400) {
-                    lastCheckedTime = Util.getMillis();
+                long currentTime = Util.getMillis();
+                if (lastCheckedTime == -1 || currentTime - lastCheckedTime > 400) {
+                    lastCheckedTime = currentTime;
                 }
                 
-                if (Util.getMillis() - lastCheckedTime > 200) {
+                if (currentTime - lastCheckedTime > 200) {
                     lastCheckedTime = -1;
                     exists = getTransferHandler(true) != null;
                 }
@@ -473,32 +491,17 @@ public class EntryWidget extends Slot implements DraggableStackProviderWidget {
         }
         
         if (tooltip != null) {
-            if (interactableFavorites && ConfigObject.getInstance().doDisplayFavoritesTooltip() && !ConfigObject.getInstance().getFavoriteKeyCode().isUnknown()) {
-                String name = ConfigObject.getInstance().getFavoriteKeyCode().getLocalizedName().getString();
-                if (reverseFavoritesAction())
-                    tooltip.addAllTexts(Stream.of(I18n.get("text.rei.remove_favorites_tooltip", name).split("\n"))
-                            .map(Component::literal).collect(Collectors.toList()));
-                else
-                    tooltip.addAllTexts(Stream.of(I18n.get("text.rei.favorites_tooltip", name).split("\n"))
-                            .map(Component::literal).collect(Collectors.toList()));
-            }
-            
-            if (tooltipProcessors != null) {
-                for (UnaryOperator<Tooltip> processor : tooltipProcessors) {
-                    tooltip = processor.apply(tooltip);
+            if (interactableFavorites && ConfigObject.getInstance().doDisplayFavoritesTooltip()) {
+                ModifierKeyCode favoriteKeyCode = ConfigObject.getInstance().getFavoriteKeyCode();
+                if (!favoriteKeyCode.isUnknown()) {
+                    String name = favoriteKeyCode.getLocalizedName().getString();
+                    if (reverseFavoritesAction())
+                        tooltip.addAllTexts(Stream.of(I18n.get("text.rei.remove_favorites_tooltip", name).split("\n"))
+                                .map(Component::literal).collect(Collectors.toList()));
+                    else
+                        tooltip.addAllTexts(Stream.of(I18n.get("text.rei.favorites_tooltip", name).split("\n"))
+                                .map(Component::literal).collect(Collectors.toList()));
                 }
-            }
-        }
-        
-        if (tooltip != null) {
-            if (interactableFavorites && ConfigObject.getInstance().doDisplayFavoritesTooltip() && !ConfigObject.getInstance().getFavoriteKeyCode().isUnknown()) {
-                String name = ConfigObject.getInstance().getFavoriteKeyCode().getLocalizedName().getString();
-                if (reverseFavoritesAction())
-                    tooltip.addAllTexts(Stream.of(I18n.get("text.rei.remove_favorites_tooltip", name).split("\n"))
-                            .map(Component::literal).collect(Collectors.toList()));
-                else
-                    tooltip.addAllTexts(Stream.of(I18n.get("text.rei.favorites_tooltip", name).split("\n"))
-                            .map(Component::literal).collect(Collectors.toList()));
             }
             
             if (tooltipProcessors != null) {

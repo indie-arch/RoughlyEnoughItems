@@ -94,6 +94,7 @@ public class EntryStacksRegionWidget<T extends RegionEntry<T>> extends WidgetWit
     private final Int2ObjectMap<RealRegionEntry<T>> entries = new Int2ObjectLinkedOpenHashMap<>();
     private final Int2ObjectMap<RealRegionEntry<T>> removedEntries = new Int2ObjectLinkedOpenHashMap<>();
     private List<RegionEntryWidget<T>> entriesList = Lists.newArrayList();
+    private Iterable<RegionEntryWidget<T>> visibleEntries = Iterables.filter(entriesList, this::isVisibleEntry);
     private List<Widget> children = Lists.newArrayList();
     
     public EntryStacksRegionWidget(RegionListener<T> listener) {
@@ -108,9 +109,10 @@ public class EntryStacksRegionWidget<T extends RegionEntry<T>> extends WidgetWit
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
         if (bounds.isEmpty()) return;
+        graphics.enableScissor(bounds.x, bounds.y, bounds.getMaxX(), bounds.getMaxY());
         
-        int entrySize = entrySize();
-        updateEntriesPosition(entry -> true);
+        boolean animate = !ConfigObject.getInstance().isReducedMotion();
+        updateEntriesPosition(entry -> animate);
         for (RealRegionEntry<T> entry : entries.values()) {
             entry.update(delta);
         }
@@ -126,14 +128,8 @@ public class EntryStacksRegionWidget<T extends RegionEntry<T>> extends WidgetWit
             }
         }
         
-        graphics.enableScissor(bounds.x, bounds.y, bounds.getMaxX(), bounds.getMaxY());
-        
-        Stream<RegionEntryWidget<T>> entryStream = this.entriesList.stream()
-                .filter(entry -> entry.getBounds().getMaxY() >= this.bounds.getY() && entry.getBounds().y <= this.bounds.getMaxY());
-        
-        new EntryRendererManager<>(entryStream.collect(Collectors.toList()))
-                .render(graphics, mouseX, mouseY, delta);
-        
+        EntryRendererManager.renderEntries(false, null, null, graphics, mouseX, mouseY, delta,
+                visibleEntries);
         updatePosition(delta);
         scrolling.renderScrollBar(graphics, 0, REIRuntime.getInstance().isDarkThemeEnabled() ? 0.8f : 1f);
         graphics.disableScissor();
@@ -351,7 +347,7 @@ public class EntryStacksRegionWidget<T extends RegionEntry<T>> extends WidgetWit
         List<RealRegionEntry<T>> addedEntries = new ArrayList<>();
         Int2ObjectMap<RealRegionEntry<T>> prevEntries = new Int2ObjectOpenHashMap<>(entries);
         this.entries.clear();
-        
+        boolean reducedMotion = ConfigObject.getInstance().isReducedMotion();
         for (T regionEntry : newEntries) {
             RealRegionEntry<T> realEntry = prevEntries.get(regionEntry.hashCode());
             
@@ -360,13 +356,13 @@ public class EntryStacksRegionWidget<T extends RegionEntry<T>> extends WidgetWit
                 addedEntries.add(realEntry);
             }
             
-            if (ConfigObject.getInstance().isReducedMotion()) realEntry.size.setAs(entrySize * 100);
+            if (reducedMotion) realEntry.size.setAs(entrySize * 100);
             else realEntry.size.setTo(entrySize * 100, 300);
             entries.put(realEntry.hashIgnoreAmount(), realEntry);
         }
         
         applyNewEntriesList();
-        updateEntriesPosition(entry -> prevEntries.containsKey(entry.hashIgnoreAmount()));
+        updateEntriesPosition(entry -> !reducedMotion && prevEntries.containsKey(entry.hashIgnoreAmount()));
         
         for (RealRegionEntry<T> removedEntry : removedEntries) {
             this.listener.onRemove(removedEntry);
@@ -388,6 +384,7 @@ public class EntryStacksRegionWidget<T extends RegionEntry<T>> extends WidgetWit
     
     public void applyNewEntriesList() {
         this.entriesList = Stream.concat(entries.values().stream().map(RealRegionEntry::getWidget), removedEntries.values().stream().map(RealRegionEntry::getWidget)).collect(Collectors.toList());
+        this.visibleEntries = Iterables.filter(this.entriesList, this::isVisibleEntry);
         this.children = Stream.<Stream<Widget>>of(
                 entries.values().stream().map(RealRegionEntry::getWidget),
                 removedEntries.values().stream().map(RealRegionEntry::getWidget)
@@ -396,6 +393,7 @@ public class EntryStacksRegionWidget<T extends RegionEntry<T>> extends WidgetWit
     
     public void updateEntriesPosition(Predicate<RealRegionEntry<T>> animated) {
         int entrySize = entrySize();
+    
         this.blockedCount = 0;
         this.innerBounds = updateInnerBounds(bounds);
         int width = innerBounds.width / entrySize;
@@ -427,6 +425,10 @@ public class EntryStacksRegionWidget<T extends RegionEntry<T>> extends WidgetWit
                 }
             }
         }
+    }
+    
+    private boolean isVisibleEntry(RegionEntryWidget<T> entry) {
+        return entry.getBounds().getMaxY() >= this.bounds.getY() && entry.getBounds().y <= this.bounds.getMaxY();
     }
     
     private int getReleaseIndex(@Nullable Point position) {

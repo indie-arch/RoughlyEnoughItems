@@ -61,6 +61,7 @@ public class PaginatedEntryListWidget extends CollapsingEntryListWidget {
     private List</*EntryStack<?> | EntryIngredient*/ Object> stacks = new ArrayList<>();
     private Object2IntMap<CollapsedStack> collapsedStackIndices = new Object2IntOpenHashMap<>();
     protected List<EntryListStackEntry> entries = Collections.emptyList();
+    private final CollapsedEntriesBorderRenderer collapsedEntriesBorderRenderer = new CollapsedEntriesBorderRenderer();
     private int page;
     
     public int getPage() {
@@ -73,8 +74,9 @@ public class PaginatedEntryListWidget extends CollapsingEntryListWidget {
     
     @Override
     protected void renderEntries(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
-        this.leftButton.setEnabled(getTotalPages() > 1);
-        this.rightButton.setEnabled(getTotalPages() > 1);
+        boolean multiplePages = getTotalPages() > 1;
+        this.leftButton.setEnabled(multiplePages);
+        this.rightButton.setEnabled(multiplePages);
         
         if (ConfigObject.getInstance().doesCacheEntryRendering()) {
             for (EntryListStackEntry entry : entries) {
@@ -84,19 +86,19 @@ public class PaginatedEntryListWidget extends CollapsingEntryListWidget {
                 }
                 
                 if (entry.our == null) {
-                    CachedEntryListRender.Sprite sprite = CachedEntryListRender.get(entry.getCurrentEntry());
+                    EntryStack<?> currentEntry = entry.getCurrentEntry();
+                    CachedEntryListRender.Sprite sprite = CachedEntryListRender.get(currentEntry);
                     if (sprite != null) {
                         CachingEntryRenderer renderer = new CachingEntryRenderer(sprite);
-                        entry.our = entry.getCurrentEntry().copy().cast().withRenderer(stack -> renderer);
+                        entry.our = currentEntry.copy().cast().withRenderer(stack -> renderer);
                     }
                 }
             }
         }
         
-        EntryRendererManager<EntryListStackEntry> manager = new EntryRendererManager<>(entries);
-        manager.render(debugger.debugTime, debugger.size, debugger.time, graphics, mouseX, mouseY, delta);
+        EntryRendererManager.renderEntries(debugger.debugTime, debugger.size, debugger.time, graphics, mouseX, mouseY, delta, entries);
         
-        new CollapsedEntriesBorderRenderer().render(graphics, entries, collapsedStackIndices);
+        collapsedEntriesBorderRenderer.render(graphics, entries, collapsedStackIndices);
         
         for (Widget widget : additionalWidgets) {
             widget.render(graphics, mouseX, mouseY, delta);

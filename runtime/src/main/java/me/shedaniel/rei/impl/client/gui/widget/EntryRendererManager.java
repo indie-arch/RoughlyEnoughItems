@@ -27,6 +27,7 @@ import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.Iterators;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import me.shedaniel.rei.api.common.entry.EntryStack;
 import me.shedaniel.rei.api.common.util.CollectionUtils;
 import me.shedaniel.rei.impl.client.util.CrashReportUtils;
 import net.minecraft.CrashReport;
@@ -41,7 +42,6 @@ import java.util.Iterator;
 import java.util.List;
 
 public class EntryRendererManager<T extends EntryWidget> implements Iterable<T> {
-    private static final int ENTRIES_PER_STRATUM = 64;
     private final Int2ObjectMap<List<Object>> grouping = new Int2ObjectOpenHashMap<>();
     private final List<T> toRender = new ArrayList<>();
     
@@ -71,22 +71,17 @@ public class EntryRendererManager<T extends EntryWidget> implements Iterable<T> 
     }
     
     public static <T extends EntryWidget> void renderEntries(boolean debugTime, MutableInt size, MutableLong time, GuiGraphics graphics, int mouseX, int mouseY, float delta, Iterable<T> entries) {
-        int rendered = 0;
         for (T entry : entries) {
-            if (entry.getCurrentEntry().isEmpty())
-                continue;
             try {
-                // Vanilla searches earlier elements in the current stratum for overlapping bounds.
-                // Bound that search for large grids without caching dynamic item models or decorations.
-                if (rendered++ % ENTRIES_PER_STRATUM == 0) {
-                    graphics.nextStratum();
-                }
+                EntryStack<?> currentEntry = entry.getCurrentEntry();
+                if (currentEntry.isEmpty())
+                    continue;
                 if (debugTime) {
                     size.increment();
                     long l = System.nanoTime();
-                    entry.render(graphics, mouseX, mouseY, delta);
+                    entry.render(graphics, mouseX, mouseY, delta, currentEntry);
                     time.add(System.nanoTime() - l);
-                } else entry.render(graphics, mouseX, mouseY, delta);
+                } else entry.render(graphics, mouseX, mouseY, delta, currentEntry);
             } catch (Throwable throwable) {
                 CrashReport report = CrashReportUtils.essential(throwable, "Rendering entry");
                 CrashReportUtils.renderer(report, entry);
@@ -94,6 +89,11 @@ public class EntryRendererManager<T extends EntryWidget> implements Iterable<T> 
                 return;
             }
         }
+    }
+    
+    public void clear() {
+        toRender.clear();
+        grouping.clear();
     }
     
     @NotNull

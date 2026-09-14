@@ -87,7 +87,8 @@ public class FavoritesPanelEntriesRow extends FavoritesPanelRow {
         this.lastY = y;
         double visibleTop = innerBounds.y + panel.getScrolledAmount();
         double visibleBottom = innerBounds.getMaxY() + panel.getScrolledAmount();
-        updateEntriesPosition(entry -> !ConfigObject.getInstance().isReducedMotion());
+        boolean animate = !ConfigObject.getInstance().isReducedMotion();
+        updateEntriesPosition(widget -> animate);
         for (SectionFavoriteWidget widget : widgets) {
             widget.update(delta);
             
@@ -156,9 +157,14 @@ public class FavoritesPanelEntriesRow extends FavoritesPanelRow {
         }
         
         public void moveTo(boolean animated, int xPos, int yPos) {
+            FloatingPoint target = pos.target();
+            if (target.x == xPos && target.y == yPos
+                    && (animated || (pos.value().x == xPos && pos.value().y == yPos))) {
+                return;
+            }
             pos.setTo(new FloatingPoint(xPos, yPos), animated ? 200 : -1);
         }
-        
+
         public void update(float delta) {
             this.pos.update(delta);
             this.size.update(delta);

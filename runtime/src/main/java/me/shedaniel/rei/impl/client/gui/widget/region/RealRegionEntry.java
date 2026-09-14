@@ -79,6 +79,11 @@ public class RealRegionEntry<T extends RegionEntry<T>> {
     }
     
     public void moveTo(boolean animated, int xPos, int yPos) {
-        pos.setTo(new FloatingPoint(xPos, yPos), animated && !ConfigObject.getInstance().isReducedMotion() ? 200 : -1);
+        FloatingPoint target = pos.target();
+        if (target.x == xPos && target.y == yPos
+                && (animated || (pos.value().x == xPos && pos.value().y == yPos))) {
+            return;
+        }
+        pos.setTo(new FloatingPoint(xPos, yPos), animated ? 200 : -1);
     }
 }

@@ -82,7 +82,7 @@ import static me.shedaniel.rei.impl.client.gui.widget.entrylist.EntryListWidget.
 
 @ApiStatus.Internal
 public abstract class ScreenOverlayImpl extends ScreenOverlay {
-    private static final List<Tooltip> TOOLTIPS = Lists.newArrayList();
+    private static Tooltip queuedTooltip;
     private static EntryListWidget entryListWidget = null;
     private static FavoritesListWidget favoritesListWidget = null;
     private final List<Widget> widgets = Lists.newLinkedList();
@@ -317,12 +317,10 @@ public abstract class ScreenOverlayImpl extends ScreenOverlay {
                 choosePageWidget.render(graphics, mouseX, mouseY, delta);
             }
         }
-        if (choosePageWidget == null) {
-            TOOLTIPS.stream().filter(Objects::nonNull)
-                    .reduce((tooltip, tooltip2) -> tooltip2)
-                    .ifPresent(tooltip -> renderTooltip(graphics, tooltip));
+        if (choosePageWidget == null && queuedTooltip != null) {
+            renderTooltip(graphics, queuedTooltip);
         }
-        TOOLTIPS.clear();
+        queuedTooltip = null;
         if (REIRuntime.getInstance().isOverlayVisible()) {
             menuHolder.afterRender();
         }
@@ -337,11 +335,11 @@ public abstract class ScreenOverlayImpl extends ScreenOverlay {
     
     public void addTooltip(@Nullable Tooltip tooltip) {
         if (tooltip != null)
-            TOOLTIPS.add(tooltip);
+            queuedTooltip = tooltip;
     }
     
     public void clearTooltips() {
-        TOOLTIPS.clear();
+        queuedTooltip = null;
     }
     
     public void renderWidgets(GuiGraphics graphics, int mouseX, int mouseY, float delta) {

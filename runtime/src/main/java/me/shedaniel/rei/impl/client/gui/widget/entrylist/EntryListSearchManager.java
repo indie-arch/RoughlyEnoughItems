@@ -79,16 +79,17 @@ public class EntryListSearchManager {
         if (ignoreLastSearch) searchManager.markDirty();
         searchManager.updateFilter(searchTerm);
         if (searchManager.isDirty()) {
+            long generation = searchManager.getGeneration();
             searchManager.getAsync((list, filter) -> {
                 if (!filter.getFilter().equals(searchTerm)) return;
-                if (searchManager.filter == null || searchManager.filter != filter) return;
+                if (!searchManager.isCurrent(filter, generation)) return;
                 InternalLogger.getInstance().log(ConfigObject.getInstance().doDebugSearchTimeRequired() ? Level.INFO : Level.TRACE, "Search \"%s\" Used [%s]: %s", filter.getFilter(), Thread.currentThread().toString(), stopwatch.toString());
-                List</*EntryStack<?> | CollapsedStack*/ Object> finalList = collapse(copyAndOrder(list), () -> searchManager.filter != null && searchManager.filter == filter);
+                List</*EntryStack<?> | CollapsedStack*/ Object> finalList = collapse(copyAndOrder(list), () -> searchManager.isCurrent(filter, generation));
                 
                 InternalLogger.getInstance().log(ConfigObject.getInstance().doDebugSearchTimeRequired() ? Level.INFO : Level.TRACE, "Search \"%s\" Used and Applied [%s]: %s", filter.getFilter(), Thread.currentThread().toString(), stopwatch.stop().toString());
                 
                 Minecraft.getInstance().submit(() -> {
-                    if (searchManager.filter == null || searchManager.filter != filter) return;
+                    if (!searchManager.isCurrent(filter, generation)) return;
                     update.accept(finalList);
                 });
             });
@@ -96,13 +97,18 @@ public class EntryListSearchManager {
     }
     
     private List<HashedEntryStackWrapper> copyAndOrder(List<HashedEntryStackWrapper> list) {
-        list = new ArrayList<>(list);
         EntryPanelOrdering ordering = ConfigObject.getInstance().getItemListOrdering();
+        boolean ascending = ConfigObject.getInstance().isItemListAscending();
+        if (ordering != EntryPanelOrdering.NAME && ascending) {
+            return list;
+        }
+
+        list = new ArrayList<>(list);
         if (ordering == EntryPanelOrdering.NAME)
             list.sort(ENTRY_NAME_COMPARER);
         // if (ordering == EntryPanelOrdering.GROUPS)
             // list.sort(ENTRY_GROUP_COMPARER);
-        if (!ConfigObject.getInstance().isItemListAscending()) {
+        if (!ascending) {
             Collections.reverse(list);
         }
         

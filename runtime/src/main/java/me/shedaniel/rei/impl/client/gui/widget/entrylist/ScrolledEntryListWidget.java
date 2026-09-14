@@ -51,6 +51,9 @@ public class ScrolledEntryListWidget extends CollapsingEntryListWidget {
     private List</*EntryStack<?> | EntryIngredient*/ Object> stacks = new ArrayList<>();
     protected List<EntryListStackEntry> entries = Collections.emptyList();
     protected int blockedCount;
+    private final EntryRendererManager<EntryListStackEntry> helper = new EntryRendererManager<>();
+    private final Object2IntMap<CollapsedStack> collapsedStackIndices = new Object2IntOpenHashMap<>();
+    private final CollapsedEntriesBorderRenderer collapsedEntriesBorderRenderer = new CollapsedEntriesBorderRenderer();
     protected final ScrollingContainer scrolling = new ScrollingContainer() {
         @Override
         public Rectangle getBounds() {
@@ -71,11 +74,11 @@ public class ScrolledEntryListWidget extends CollapsingEntryListWidget {
         int skip = Math.max(0, Mth.floor(scrolling.scrollAmount() / (float) entrySize));
         int nextIndex = skip * innerBounds.width / entrySize;
         this.blockedCount = 0;
-        EntryRendererManager<EntryListStackEntry> helper = new EntryRendererManager<>();
+        this.helper.clear();
         Int2ObjectMap<CollapsedStack> indexedCollapsedStack = getCollapsedStackIndexed();
         int collapsedStacksIndex = 0;
-        Object2IntMap<CollapsedStack> collapsedStackIndices = new Object2IntOpenHashMap<>();
-        collapsedStackIndices.defaultReturnValue(-1);
+        this.collapsedStackIndices.clear();
+        this.collapsedStackIndices.defaultReturnValue(-1);
         
         int i = nextIndex;
         for (int cont = nextIndex; cont < entries.size(); cont++) {
@@ -119,7 +122,7 @@ public class ScrolledEntryListWidget extends CollapsingEntryListWidget {
         
         helper.render(debugger.debugTime, debugger.size, debugger.time, graphics, mouseX, mouseY, delta);
         
-        new CollapsedEntriesBorderRenderer().render(graphics, helper, collapsedStackIndices);
+        collapsedEntriesBorderRenderer.render(graphics, helper, collapsedStackIndices);
         
         scrolling.updatePosition(delta);
         graphics.disableScissor();

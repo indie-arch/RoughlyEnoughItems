@@ -124,7 +124,11 @@ public class ExclusionZonesImpl implements ExclusionZones {
     }
     
     private long currentHashCode(DisplayPanelLocation location) {
-        return areasHashCode(getExclusionZones(Minecraft.getInstance().gui.screen(), false));
+        Screen screen = Minecraft.getInstance().gui.screen();
+        List<Rectangle> zones = snapshotScreen == screen && snapshotZones != null
+                ? snapshotZones
+                : getExclusionZones(screen, false);
+        return areasHashCode(zones);
     }
     
     @Override
@@ -142,6 +146,9 @@ public class ExclusionZonesImpl implements ExclusionZones {
     public List<Rectangle> getExclusionZones(Class<?> screenClass, Screen screen, boolean sort) {
         if (screen == null || !screenClass.isAssignableFrom(screen.getClass())) {
             return Lists.newArrayList();
+        }
+        if (!sort && snapshotZones != null && snapshotScreen == screen) {
+            return Lists.newArrayList(snapshotZones);
         }
         
         List<Rectangle> rectangles = Lists.newArrayList();

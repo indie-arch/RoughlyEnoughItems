@@ -271,8 +271,11 @@ public class ViewsImpl implements Views {
     public static boolean isRecipesFor(@Nullable DisplayCache displayCache, List<EntryStack<?>> stacks, Display display) {
         if (displayCache != null && displayCache.isCached(display)) {
             for (EntryStack<?> recipesFor : stacks) {
-                return displayCache.getDisplaysByOutput(recipesFor).contains(display);
+                if (displayCache.getDisplaysByOutput(recipesFor).contains(display)) {
+                    return true;
+                }
             }
+            return false;
         }
         
         return checkUsages(stacks, display, display.getOutputEntries());
@@ -281,8 +284,11 @@ public class ViewsImpl implements Views {
     public static boolean isUsagesFor(@Nullable DisplayCache displayCache, List<EntryStack<?>> stacks, Display display) {
         if (displayCache != null && displayCache.isCached(display)) {
             for (EntryStack<?> recipesFor : stacks) {
-                return displayCache.getDisplaysByInput(recipesFor).contains(display);
+                if (displayCache.getDisplaysByInput(recipesFor).contains(display)) {
+                    return true;
+                }
             }
+            return false;
         }
         
         return checkUsages(stacks, display, display.getInputEntries());
